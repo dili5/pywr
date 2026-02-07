@@ -48,7 +48,13 @@ class OrificeOutlet(Outlet):
     height: float
     Cd: float = 0.62
     n_open: int = 1
+    n_open_series: TimeSeries | None = None  # time-varying number of openings
     opening_height: TimeSeries | None = None  # time-varying, metres
+
+    def _n_open(self, t_index: int) -> int:
+        if self.n_open_series is None:
+            return int(self.n_open)
+        return int(round(float(self.n_open_series.value_at_index(t_index))))
 
     def _opening(self, t_index: int) -> float:
         if self.opening_height is None:
@@ -60,7 +66,8 @@ class OrificeOutlet(Outlet):
     ) -> float:
         if self.width <= 0.0 or self.height <= 0.0:
             raise OutletError("OrificeOutlet width/height must be > 0.")
-        if self.n_open <= 0:
+        n_open = self._n_open(t_index)
+        if n_open <= 0:
             return 0.0
         opening = max(0.0, min(self.height, self._opening(t_index)))
         if opening <= 0.0:
@@ -80,13 +87,13 @@ class OrificeOutlet(Outlet):
         if head <= 0.0:
             return 0.0
 
-        area = float(self.n_open) * self.width * opening
+        area = float(n_open) * self.width * opening
         return float(self.Cd * area * math.sqrt(2.0 * G * head))
 
 
 @dataclass(slots=True)
 class MaxReleaseOutlet(Outlet):
-    """Release at most max_Q(t); otherwise pass inflow (no throttling)."""
+    """A prescribed discharge time-series (subject to available water)."""
 
     max_Q: TimeSeries
 
@@ -133,12 +140,23 @@ def build_outlet(
             opening_ts = series[opening]
         else:
             opening_ts = build_timeseries(time_index, opening, name="opening_height")
+        n_open_cfg = cfg.get("n_open", 1)
+        if isinstance(n_open_cfg, str):
+            n_open_ts = series[n_open_cfg]
+            n_open = 1
+        elif isinstance(n_open_cfg, list):
+            n_open_ts = build_timeseries(time_index, n_open_cfg, name="n_open")
+            n_open = 1
+        else:
+            n_open_ts = None
+            n_open = int(n_open_cfg)
         return OrificeOutlet(
             invert_elev=float(cfg["invert_elev"]),
             width=float(cfg["width"]),
             height=float(cfg["height"]),
             Cd=float(cfg.get("Cd", 0.62)),
-            n_open=int(cfg.get("n_open", 1)),
+            n_open=n_open,
+            n_open_series=n_open_ts,
             opening_height=opening_ts,
         )
     if otype in ("max_release", "maxrelease"):
