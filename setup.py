@@ -40,6 +40,7 @@ def setup_package():
             "pywr",
             "pywr.solvers",
             "pywr.domains",
+            "pywr.flood",
             "pywr.parameters",
             "pywr.recorders",
             "pywr.notebook",
