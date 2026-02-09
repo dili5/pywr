@@ -313,7 +313,13 @@ def build_node(
         outlet_cfg = cfg.get("outlet")
         if outlet_cfg is None:
             raise NodeError(f"{name} reservoir requires outlet.")
-        outlet = build_outlet(outlet_cfg, time_index=time_index, series=series)
+        outlet = build_outlet(
+            outlet_cfg,
+            time_index=time_index,
+            series=series,
+            excel_provider=stage_storage_provider,
+            node_name=name,
+        )
 
         lat = cfg.get("lateral_inflow", None)
         lat_ts = None

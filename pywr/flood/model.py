@@ -100,10 +100,10 @@ class FloodModel:
         # Optional: load reservoir stage-storage curves from Excel.
         stage_storage_provider = None
         if cfg.get("stage_storage_excel") is not None:
-            from pywr.flood.excel import build_excel_stage_storage_provider, ExcelCurveError
+            from pywr.flood.excel import build_excel_hydro_provider, ExcelCurveError
 
             try:
-                stage_storage_provider = build_excel_stage_storage_provider(
+                stage_storage_provider = build_excel_hydro_provider(
                     cfg["stage_storage_excel"]
                 )
             except ExcelCurveError as e:

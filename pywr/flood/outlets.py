@@ -5,6 +5,7 @@ from typing import Optional
 
 import math
 
+from pywr.flood.curves import PiecewiseLinearCurve
 from pywr.flood.series import TimeSeries, build_timeseries
 
 G = 9.80665
@@ -172,11 +173,27 @@ class OutletGroup(Outlet):
         return float(sum(comps.values()))
 
 
+@dataclass(slots=True)
+class RatingOutlet(Outlet):
+    """Stage-discharge rating outlet: Q = f(stage_up)."""
+
+    stage_discharge: PiecewiseLinearCurve
+    factor: float = 1.0
+
+    def discharge(
+        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+    ) -> float:
+        q = float(self.stage_discharge(float(stage_up)))
+        return float(max(0.0, self.factor * q))
+
+
 def build_outlet(
     cfg: dict,
     *,
     time_index,
     series: dict[str, TimeSeries],
+    excel_provider=None,
+    node_name: str | None = None,
 ) -> Outlet:
     otype = (cfg.get("type") or "").lower()
     if otype == "weir":
@@ -217,6 +234,24 @@ def build_outlet(
         else:
             mx_ts = build_timeseries(time_index, mx, name="max_Q")
         return MaxReleaseOutlet(max_Q=mx_ts)
+    if otype in ("rating", "rating_curve", "stage_discharge"):
+        curve = cfg.get("stage_discharge_curve", None) or cfg.get("curve", None)
+        factor = float(cfg.get("factor", 1.0))
+        if curve is None:
+            raise OutletError("RatingOutlet requires 'stage_discharge_curve' or 'curve'.")
+        if curve == "excel":
+            if excel_provider is None or node_name is None:
+                raise OutletError("RatingOutlet curve='excel' requires stage_storage_excel configuration.")
+            sheet = cfg.get("excel_sheet", None) or cfg.get("sheet", None)
+            z_col = cfg.get("stage_col", None)
+            q_col = cfg.get("discharge_col", None)
+            pairs = excel_provider.get_stage_discharge_pairs(
+                node_name, sheet_name=sheet, stage_col=z_col, discharge_col=q_col
+            )
+        else:
+            pairs = curve
+        c = PiecewiseLinearCurve.from_pairs(pairs, clamp=True, name=f"{node_name or 'rating'}.ZQ")
+        return RatingOutlet(stage_discharge=c, factor=factor)
     if otype in ("group", "sum"):
         # Build a named group from all keys except configuration keys.
         allocation = str(cfg.get("allocation", "proportional")).lower()
@@ -229,14 +264,32 @@ def build_outlet(
                 continue
             if not isinstance(v, dict):
                 raise OutletError(f"OutletGroup item {k!r} must be an outlet mapping.")
-            outlets[str(k)] = build_outlet(v, time_index=time_index, series=series)
+            outlets[str(k)] = build_outlet(
+                v,
+                time_index=time_index,
+                series=series,
+                excel_provider=excel_provider,
+                node_name=node_name,
+            )
         if not outlets:
             raise OutletError("OutletGroup must contain at least one outlet definition.")
         return OutletGroup(outlets=outlets, allocation=allocation, order=order)
     if otype == "composite":
         # Backwards-compatibility (deprecated): expects 'a' and 'b'.
-        a = build_outlet(cfg["a"], time_index=time_index, series=series)
-        b = build_outlet(cfg["b"], time_index=time_index, series=series)
+        a = build_outlet(
+            cfg["a"],
+            time_index=time_index,
+            series=series,
+            excel_provider=excel_provider,
+            node_name=node_name,
+        )
+        b = build_outlet(
+            cfg["b"],
+            time_index=time_index,
+            series=series,
+            excel_provider=excel_provider,
+            node_name=node_name,
+        )
         return CompositeOutlet(a=a, b=b)
     raise OutletError(f"Unknown outlet type: {cfg.get('type')!r}")
 
