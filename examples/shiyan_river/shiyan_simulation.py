@@ -268,7 +268,7 @@ def _make_weir_capacity_parameter(
 def build_model(config: Dict[str, Any], excel_override: Optional[str] = None) -> Tuple[Model, Dict[str, Any], float]:
     time_cfg = config["time"]
     dt_seconds = int(time_cfg["dt_seconds"])
-    freq = f"{dt_seconds}S"
+    freq = f"{dt_seconds}s"
     start = pd.to_datetime(time_cfg["start"])
     end = pd.to_datetime(time_cfg["end"])
     inclusive = time_cfg.get("inclusive", "both")
