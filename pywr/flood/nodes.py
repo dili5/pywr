@@ -218,6 +218,7 @@ class ReservoirNode(FloodNode):
         initial_storage: float | None = None,
         initial_stage: float | None = None,
         lateral_inflow: TimeSeries | None = None,
+        lateral_inflows: list[tuple[str, TimeSeries, float]] | None = None,
         tailwater_ref: str | None = None,
         tailwater_constant: float = 0.0,
         max_iterations: int = 50,
@@ -226,7 +227,9 @@ class ReservoirNode(FloodNode):
         super().__init__(name)
         self.stage_storage = stage_storage
         self.outlet = outlet
+        # Backwards-compatible single lateral inflow plus new multi-lateral inflows.
         self.lateral_inflow = lateral_inflow
+        self.lateral_inflows = lateral_inflows or []
         self.tailwater_ref = tailwater_ref
         self.tailwater_constant = float(tailwater_constant)
         self.max_iterations = int(max_iterations)
@@ -262,9 +265,12 @@ class ReservoirNode(FloodNode):
         stage_guess: dict[str, float],
         commit: bool,
     ) -> NodeState:
-        qlat = 0.0 if self.lateral_inflow is None else float(
-            self.lateral_inflow.value_at_index(t_index)
-        )
+        qlat = 0.0
+        if self.lateral_inflow is not None:
+            qlat += float(self.lateral_inflow.value_at_index(t_index))
+        if self.lateral_inflows:
+            for _nm, ts, fac in self.lateral_inflows:
+                qlat += float(fac) * float(ts.value_at_index(t_index))
         qin = max(0.0, float(inflow) + qlat)
         v0 = float(self._storage)
 
@@ -441,9 +447,69 @@ def build_node(
             lat_ts = series[lat] if isinstance(lat, str) else build_timeseries(
                 time_index, lat, name=f"{name}.lateral_inflow"
             )
+        # Optional: multiple laterals in a consistent structure.
+        inflows_cfg = cfg.get("inflows", None)
+        if inflows_cfg and isinstance(inflows_cfg, dict):
+            laterals = inflows_cfg.get("laterals", inflows_cfg.get("lateral", None))
+            if laterals is not None:
+                # Sum them into a single series-equivalent by evaluating per timestep; for now
+                # we keep only a single TimeSeries on JunctionNode, so we do not support this
+                # directly (use ReservoirNode if you need to track storage).
+                raise NodeError(
+                    f"{name} junction does not currently support 'inflows.laterals'. "
+                    "Use a 'reservoir' node or aggregate the lateral series upstream."
+                )
         return JunctionNode(name, lateral_inflow=lat_ts, rating_curve=_rating())
 
     if ntype in ("reservoir", "storage"):
+        # Optional consistent inflow structure: inflows.laterals
+        lateral_inflows: list[tuple[str, TimeSeries, float]] = []
+        inflows_cfg = cfg.get("inflows", None)
+        if inflows_cfg and isinstance(inflows_cfg, dict):
+            laterals = inflows_cfg.get("laterals", inflows_cfg.get("lateral", None))
+            if laterals is not None:
+                if isinstance(laterals, dict):
+                    items = laterals.items()
+                elif isinstance(laterals, list):
+                    # list of {name, series, factor}
+                    items = []
+                    for i, it in enumerate(laterals):
+                        if not isinstance(it, dict):
+                            raise NodeError(f"{name} inflows.laterals[{i}] must be a mapping.")
+                        nm = str(it.get("name", f"lat{i}"))
+                        items.append((nm, it))
+                else:
+                    raise NodeError(f"{name} inflows.laterals must be dict or list.")
+
+                if isinstance(laterals, dict):
+                    for nm, spec in items:  # type: ignore[misc]
+                        if isinstance(spec, (str, list, int, float)) or spec is None:
+                            ts = series[spec] if isinstance(spec, str) else build_timeseries(
+                                time_index, spec, name=f"{name}.laterals.{nm}"
+                            )
+                            lateral_inflows.append((str(nm), ts, 1.0))
+                        elif isinstance(spec, dict):
+                            sref = spec.get("series", spec.get("inflow", None))
+                            fac = float(spec.get("factor", 1.0))
+                            if sref is None:
+                                raise NodeError(f"{name} lateral {nm!r} requires 'series'.")
+                            ts = series[sref] if isinstance(sref, str) else build_timeseries(
+                                time_index, sref, name=f"{name}.laterals.{nm}"
+                            )
+                            lateral_inflows.append((str(nm), ts, fac))
+                        else:
+                            raise NodeError(f"{name} lateral {nm!r} invalid spec type.")
+                else:
+                    for nm, spec in items:
+                        sref = spec.get("series", spec.get("inflow", None))
+                        fac = float(spec.get("factor", 1.0))
+                        if sref is None:
+                            raise NodeError(f"{name} lateral {nm!r} requires 'series'.")
+                        ts = series[sref] if isinstance(sref, str) else build_timeseries(
+                            time_index, sref, name=f"{name}.laterals.{nm}"
+                        )
+                        lateral_inflows.append((str(nm), ts, fac))
+
         ssv = cfg.get("stage_storage_curve")
         if ssv is None or ssv == "excel":
             if stage_storage_provider is None:
@@ -508,6 +574,7 @@ def build_node(
             initial_storage=cfg.get("initial_storage", None),
             initial_stage=cfg.get("initial_stage", None),
             lateral_inflow=lat_ts,
+            lateral_inflows=lateral_inflows,
             tailwater_ref=cfg.get("tailwater_ref", None),
             tailwater_constant=float(cfg.get("tailwater_constant", 0.0)),
         )

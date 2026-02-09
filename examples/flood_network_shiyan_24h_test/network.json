@@ -47,7 +47,11 @@
       "type": "reservoir",
       "initial_stage": 37.5,
       "stage_storage_curve": ["石岩生态库Z-V", ["Z", "V"]],
-      "lateral_inflow": "Q_surface_runoff_eco",
+      "inflows": {
+        "laterals": {
+          "surface_runoff": { "series": "Q_surface_runoff_eco", "factor": 1.0 }
+        }
+      },
       "tailwater_ref": "石岩水库",
       "outlet": {
         "type": "sum",
@@ -62,7 +66,11 @@
       "type": "reservoir",
       "initial_stage": 35.0,
       "stage_storage_curve": ["石岩水库Z-V", ["Z", "V"]],
-      "lateral_inflow": "Q_surface_runoff_res",
+      "inflows": {
+        "laterals": {
+          "surface_runoff": { "series": "Q_surface_runoff_res", "factor": 1.0 }
+        }
+      },
       "tailwater_constant": 6.0,
       "outlet": {
         "type": "sum",
