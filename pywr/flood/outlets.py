@@ -52,6 +52,10 @@ class WeirOutlet(Outlet):
     crest_elev: float
     width: float
     Cw: float = 1.7  # broad-crested default-ish
+    submergence_method: str = "villemonte"  # none | villemonte
+    submergence_transition_ratio: float = 0.67
+    submergence_m: float = 1.5
+    submergence_n: float = 0.385
 
     def discharge(
         self,
@@ -62,10 +66,37 @@ class WeirOutlet(Outlet):
         dt: float,
         stage_lookup: StageLookup | None = None,
     ) -> float:
-        h = stage_up - self.crest_elev
-        if h <= 0.0:
+        h1 = float(stage_up) - float(self.crest_elev)
+        if h1 <= 0.0:
             return 0.0
-        return float(self.Cw * self.width * (h ** 1.5))
+        q_free = float(self.Cw * self.width * (h1 ** 1.5))
+
+        method = (self.submergence_method or "none").lower()
+        if method in ("none", "off", "ignore"):
+            return q_free
+
+        # Tailwater head above crest
+        h2 = max(0.0, float(stage_down) - float(self.crest_elev))
+        if h2 <= 0.0:
+            return q_free
+
+        # If downstream is above upstream no flow
+        if float(stage_down) >= float(stage_up):
+            return 0.0
+
+        r = h2 / h1  # submergence ratio
+        if r <= float(self.submergence_transition_ratio):
+            return q_free
+
+        if method in ("villemonte", "vm"):
+            # Villemonte-type correction (commonly used for submerged weirs):
+            # Q_sub = Q_free * (1 - r^m)^n
+            m = float(self.submergence_m)
+            n = float(self.submergence_n)
+            k = max(0.0, (1.0 - (r**m)))
+            return float(q_free * (k**n))
+
+        raise OutletError(f"Unknown weir submergence_method: {self.submergence_method!r}")
 
 
 @dataclass(slots=True)
@@ -327,6 +358,10 @@ def build_outlet(
             crest_elev=float(cfg["crest_elev"]),
             width=float(cfg["width"]),
             Cw=float(cfg.get("Cw", 1.7)),
+            submergence_method=str(cfg.get("submergence_method", "villemonte")),
+            submergence_transition_ratio=float(cfg.get("submergence_transition_ratio", 0.67)),
+            submergence_m=float(cfg.get("submergence_m", 1.5)),
+            submergence_n=float(cfg.get("submergence_n", 0.385)),
         )
         return wrap_tailwater_if_needed(out, cfg)
     if otype == "orifice":
