@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from pywr.flood import FloodModel
 
 
 def main() -> None:
-    cfg_path = Path(__file__).with_name("network.json")
+    cfg_path = (
+        Path(sys.argv[1])
+        if len(sys.argv) > 1
+        else Path(__file__).with_name("network.json")
+    )
     model = FloodModel.load(str(cfg_path))
     result = model.run()
 

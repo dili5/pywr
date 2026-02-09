@@ -1,0 +1,123 @@
+{
+  "time": {
+    "start": "2026-02-07 00:00:00",
+    "end": "2026-02-08 00:00:00",
+    "dt_seconds": 3600,
+    "inclusive": "left"
+  },
+  "model": {
+    "max_iters": 10,
+    "tol_stage": 0.001
+  },
+  "stage_storage_excel": {
+    "path": "D:\\9-learn\\sz_prj_tgsy\\docs\\Z-V-Q.xlsx",
+    "sheet_suffix": "Z-V",
+    "sheet_joiner": "",
+    "stage_col": "Z",
+    "storage_col": "V"
+  },
+  "series": {
+    "Q_shiyan_river": [10, 20, 40, 80, 120, 150, 140, 110, 80, 60, 40, 30, 20, 15, 12, 10, 9, 8, 7, 7, 6, 6, 5, 5],
+    "Q_yingrenshi_river": [5, 6, 10, 20, 35, 50, 55, 48, 40, 30, 22, 18, 14, 12, 10, 9, 8, 7, 7, 6, 6, 5, 5, 5],
+    "Q_jiuwei_river": [3, 4, 8, 15, 25, 35, 40, 38, 32, 26, 20, 16, 13, 11, 10, 9, 8, 7, 7, 6, 6, 5, 5, 5],
+    "Q_surface_runoff": [0, 0, 2, 6, 10, 15, 18, 16, 12, 9, 6, 4, 3, 2, 1, 1, 1, 0.5, 0.5, 0.5, 0.2, 0.2, 0.2, 0.2],
+    "open_shiyan_eco_gate": [0.2, 0.3, 0.6, 1.2, 1.5, 1.5, 1.2, 1.0, 0.8, 0.6, 0.5, 0.4, 0.35, 0.3, 0.3, 0.25, 0.25, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+    "open_baoshi_gate": [0.1, 0.1, 0.2, 0.4, 0.6, 0.7, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25, 0.2, 0.2, 0.2, 0.2, 0.2, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15],
+    "open_yingrenshi_gate": [0.1, 0.1, 0.15, 0.25, 0.4, 0.5, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.25, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+    "open_jiuwei_gate": [0.1, 0.1, 0.15, 0.25, 0.35, 0.45, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.25, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+  },
+  "nodes": {
+    "石岩河来流": { "type": "boundary", "inflow": "Q_shiyan_river" },
+    "应人石河来流": { "type": "boundary", "inflow": "Q_yingrenshi_river" },
+    "九围河来流": { "type": "boundary", "inflow": "Q_jiuwei_river" },
+    "宝石湖地表径流": { "type": "boundary", "inflow": "Q_surface_runoff" },
+
+    "石岩生态库": {
+      "type": "reservoir",
+      "initial_stage": 18.0,
+      "stage_storage_curve": "excel",
+      "tailwater_ref": "石岩水库",
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "orifice", "invert_elev": 17.2, "width": 2.0, "height": 2.0, "Cd": 0.62, "n_open": 2, "opening_height": "open_shiyan_eco_gate" },
+        "b": { "type": "weir", "crest_elev": 19.6, "width": 15.0, "Cw": 1.7 }
+      }
+    },
+
+    "宝石湖生态库": {
+      "type": "reservoir",
+      "initial_stage": 12.0,
+      "stage_storage_curve": "excel",
+      "tailwater_ref": "铁岗水库",
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "orifice", "invert_elev": 11.3, "width": 1.5, "height": 1.5, "Cd": 0.62, "n_open": 1, "opening_height": "open_baoshi_gate" },
+        "b": { "type": "weir", "crest_elev": 13.5, "width": 8.0, "Cw": 1.7 }
+      }
+    },
+
+    "应人石生态库": {
+      "type": "reservoir",
+      "initial_stage": 16.0,
+      "stage_storage_curve": "excel",
+      "tailwater_ref": "铁岗水库",
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "orifice", "invert_elev": 15.2, "width": 2.0, "height": 2.0, "Cd": 0.62, "n_open": 1, "opening_height": "open_yingrenshi_gate" },
+        "b": { "type": "weir", "crest_elev": 17.6, "width": 10.0, "Cw": 1.7 }
+      }
+    },
+
+    "九围生态库": {
+      "type": "reservoir",
+      "initial_stage": 15.0,
+      "stage_storage_curve": "excel",
+      "tailwater_ref": "铁岗水库",
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "orifice", "invert_elev": 14.3, "width": 2.0, "height": 2.0, "Cd": 0.62, "n_open": 1, "opening_height": "open_jiuwei_gate" },
+        "b": { "type": "weir", "crest_elev": 16.6, "width": 10.0, "Cw": 1.7 }
+      }
+    },
+
+    "石岩水库": {
+      "type": "reservoir",
+      "initial_stage": 24.0,
+      "stage_storage_curve": "excel",
+      "tailwater_ref": "铁岗水库",
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "max_release", "max_Q": 120.0 },
+        "b": { "type": "weir", "crest_elev": 25.5, "width": 30.0, "Cw": 1.7 }
+      }
+    },
+
+    "铁岗水库": {
+      "type": "reservoir",
+      "initial_stage": 21.0,
+      "stage_storage_curve": "excel",
+      "tailwater_constant": 6.0,
+      "outlet": {
+        "type": "sum",
+        "a": { "type": "max_release", "max_Q": 250.0 },
+        "b": { "type": "weir", "crest_elev": 22.6, "width": 40.0, "Cw": 1.7 }
+      }
+    },
+
+    "西乡河": { "type": "junction", "rating_curve": [[0.0, 5.5], [50.0, 6.0], [200.0, 7.0], [500.0, 8.5]] }
+  },
+  "edges": [
+    { "from": "石岩河来流", "to": "石岩生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "应人石河来流", "to": "应人石生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "九围河来流", "to": "九围生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "宝石湖地表径流", "to": "宝石湖生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+
+    { "from": "石岩生态库", "to": "石岩水库", "routing": { "type": "muskingum", "K_seconds": 7200, "X": 0.2 } },
+    { "from": "宝石湖生态库", "to": "铁岗水库", "routing": { "type": "muskingum", "K_seconds": 10800, "X": 0.2 } },
+    { "from": "应人石生态库", "to": "铁岗水库", "routing": { "type": "muskingum", "K_seconds": 14400, "X": 0.2 } },
+    { "from": "九围生态库", "to": "铁岗水库", "routing": { "type": "muskingum", "K_seconds": 14400, "X": 0.2 } },
+    { "from": "石岩水库", "to": "铁岗水库", "routing": { "type": "muskingum", "K_seconds": 21600, "X": 0.2 } },
+    { "from": "铁岗水库", "to": "西乡河", "routing": { "type": "muskingum", "K_seconds": 7200, "X": 0.2 } }
+  ]
+}
+

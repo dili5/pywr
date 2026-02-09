@@ -8,4 +8,9 @@ focused on:
 """
 
 from pywr.flood.model import FloodModel, FloodSimulationResult  # noqa: F401
+from pywr.flood.excel import (  # noqa: F401
+    ExcelStageStorageProvider,
+    StageStorageExcelConfig,
+    ExcelCurveError,
+)
 
