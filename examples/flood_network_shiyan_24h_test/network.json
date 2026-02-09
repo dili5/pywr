@@ -1,0 +1,85 @@
+{
+  "time": {
+    "start": "2026-02-07 00:00:00",
+    "end": "2026-02-08 00:00:00",
+    "dt_seconds": 3600,
+    "inclusive": "left"
+  },
+  "model": {
+    "max_iters": 10,
+    "tol_stage": 0.001
+  },
+  "series": {
+    "Q_shiyan_river_100": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+
+    "Q_surface_runoff_eco": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+    "Q_surface_runoff_res": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+
+    "open_inflow_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "open_eco_release_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "open_spillway_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  },
+  "nodes": {
+    "石岩河来流": { "type": "boundary", "inflow": "Q_shiyan_river_100" },
+
+    "石岩河节制闸上游": {
+      "type": "reservoir",
+      "initial_stage": 37.0,
+      "stage_storage_curve": [[36.0, 0.0], [37.0, 200000.0], [38.0, 450000.0], [39.0, 800000.0]],
+      "tailwater_ref": "石岩生态库",
+      "outlet": {
+        "type": "orifice",
+        "invert_elev": 36.5,
+        "width": 6.0,
+        "height": 4.0,
+        "Cd": 0.62,
+        "n_open": 4,
+        "opening_height": "open_inflow_gate"
+      }
+    },
+
+    "石岩生态库": {
+      "type": "reservoir",
+      "initial_stage": 37.5,
+      "stage_storage_curve": [[36.0, 0.0], [37.0, 800000.0], [38.0, 1800000.0], [39.0, 3200000.0], [40.0, 5200000.0]],
+      "lateral_inflow": "Q_surface_runoff_eco",
+      "tailwater_ref": "石岩水库",
+      "outlet": {
+        "type": "sum",
+        "to_maozhou": { "type": "max_release", "max_Q": 20.0 },
+        "spill_to_reservoir": { "type": "weir", "crest_elev": 38.14, "width": 30.0, "Cw": 1.7 }
+      }
+    },
+
+    "茅洲河": { "type": "junction" },
+
+    "石岩水库": {
+      "type": "reservoir",
+      "initial_stage": 35.0,
+      "stage_storage_curve": [[34.0, 0.0], [35.0, 8000000.0], [36.0, 18000000.0], [37.0, 32000000.0]],
+      "lateral_inflow": "Q_surface_runoff_res",
+      "tailwater_constant": 6.0,
+      "outlet": {
+        "type": "sum",
+        "allocation": "priority",
+        "order": ["supply", "to_xixiang"],
+        "supply": { "type": "max_release", "max_Q": 5.0 },
+        "to_xixiang": { "type": "orifice", "invert_elev": 30.0, "width": 10.0, "height": 6.0, "Cd": 0.62, "n_open": 3, "opening_height": "open_spillway_gate" }
+      }
+    },
+
+    "西乡河": { "type": "junction" },
+    "供水": { "type": "junction" }
+  },
+  "edges": [
+    { "from": "石岩河来流", "to": "石岩河节制闸上游", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩河节制闸上游", "to": "石岩生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+
+    { "from": "石岩生态库", "to": "茅洲河", "from_outlet": "to_maozhou", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩生态库", "to": "石岩水库", "from_outlet": "spill_to_reservoir", "routing": { "type": "lag", "lag_seconds": 0 } },
+
+    { "from": "石岩水库", "to": "供水", "from_outlet": "supply", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩水库", "to": "西乡河", "from_outlet": "to_xixiang", "routing": { "type": "lag", "lag_seconds": 0 } }
+  ]
+}
+
