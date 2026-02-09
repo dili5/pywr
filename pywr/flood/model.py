@@ -24,6 +24,7 @@ class FloodEdge:
     to_node: str
     router: Router
     factor: float = 1.0
+    from_outlet: str | None = None
 
     def route(self, q: float, dt: float, *, commit: bool) -> float:
         q0 = float(self.factor) * float(q)
@@ -132,6 +133,7 @@ class FloodModel:
             r_cfg = ecfg.get("routing", {"type": "lag", "lag_seconds": 0})
             router = build_router(r_cfg)
             factor = float(ecfg.get("factor", 1.0))
+            from_outlet = ecfg.get("from_outlet", None)
             edges.append(
                 FloodEdge(
                     name=str(ecfg.get("name", f"e{i}:{frm}->{to}")),
@@ -139,6 +141,7 @@ class FloodModel:
                     to_node=to,
                     router=router,
                     factor=factor,
+                    from_outlet=from_outlet,
                 )
             )
 
@@ -182,10 +185,14 @@ class FloodModel:
                 "outflow": float(st.outflow),
                 "stage": float(st.stage),
                 "storage": float(st.storage),
+                "outflow_components": dict(st.outflow_components),
             }
-            qout = float(st.outflow)
             for e in out_edges_by_node.get(nname, []):
-                qd = e.route(qout, dt, commit=commit)
+                if e.from_outlet:
+                    qsrc = float(st.outflow_components.get(e.from_outlet, 0.0))
+                else:
+                    qsrc = float(st.outflow)
+                qd = e.route(qsrc, dt, commit=commit)
                 inflow_acc[e.to_node] += float(qd)
 
         return node_state
@@ -204,6 +211,7 @@ class FloodModel:
             }
             for n in node_names
         }
+        comp_data: dict[str, dict[str, np.ndarray]] = {n: {} for n in node_names}
 
         # Initial stage guess from node states.
         stage_guess: dict[str, float] = {
@@ -239,17 +247,22 @@ class FloodModel:
                 data[n]["outflow"][ti] = st["outflow"]
                 data[n]["stage"][ti] = st["stage"]
                 data[n]["storage"][ti] = st["storage"]
+                comps = st.get("outflow_components", {}) or {}
+                for cname, cq in comps.items():
+                    if cname not in comp_data[n]:
+                        comp_data[n][cname] = np.zeros(n_steps, dtype=float)
+                    comp_data[n][cname][ti] = float(cq)
 
         node_frames: dict[str, pd.DataFrame] = {}
         for n in node_names:
-            node_frames[n] = pd.DataFrame(
-                {
-                    "inflow": data[n]["inflow"],
-                    "outflow": data[n]["outflow"],
-                    "stage": data[n]["stage"],
-                    "storage": data[n]["storage"],
-                },
-                index=self.time_index,
-            )
+            cols = {
+                "inflow": data[n]["inflow"],
+                "outflow": data[n]["outflow"],
+                "stage": data[n]["stage"],
+                "storage": data[n]["storage"],
+            }
+            for cname, arr in comp_data[n].items():
+                cols[f"outflow_{cname}"] = arr
+            node_frames[n] = pd.DataFrame(cols, index=self.time_index)
         return FloodSimulationResult(time_index=self.time_index, node_frames=node_frames)
 

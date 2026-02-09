@@ -25,6 +25,17 @@ class Outlet:
     ) -> float:
         raise NotImplementedError
 
+    def discharge_components(
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+    ) -> dict[str, float] | None:
+        """Optional component discharges for routing multiple outlets."""
+        return None
+
 
 @dataclass(slots=True)
 class WeirOutlet(Outlet):
@@ -121,6 +132,46 @@ class CompositeOutlet(Outlet):
         )
 
 
+@dataclass(slots=True)
+class OutletGroup(Outlet):
+    """A group of named outlets whose discharges are summed.
+
+    Notes
+    -----
+    This object exists to support routing different outlet components to different
+    downstream nodes. Use `discharge_components` to obtain the component flows.
+    """
+
+    outlets: dict[str, Outlet]
+    allocation: str = "proportional"  # proportional | priority
+    order: list[str] | None = None
+
+    def discharge_components(
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+    ) -> dict[str, float]:
+        return {
+            name: float(
+                ot.discharge(
+                    t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+                )
+            )
+            for name, ot in self.outlets.items()
+        }
+
+    def discharge(
+        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+    ) -> float:
+        comps = self.discharge_components(
+            t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+        )
+        return float(sum(comps.values()))
+
+
 def build_outlet(
     cfg: dict,
     *,
@@ -166,7 +217,24 @@ def build_outlet(
         else:
             mx_ts = build_timeseries(time_index, mx, name="max_Q")
         return MaxReleaseOutlet(max_Q=mx_ts)
-    if otype in ("composite", "sum"):
+    if otype in ("group", "sum"):
+        # Build a named group from all keys except configuration keys.
+        allocation = str(cfg.get("allocation", "proportional")).lower()
+        order = cfg.get("order", None)
+        if order is not None and not isinstance(order, list):
+            raise OutletError("OutletGroup 'order' must be a list of outlet names.")
+        outlets: dict[str, Outlet] = {}
+        for k, v in cfg.items():
+            if k in ("type", "allocation", "order"):
+                continue
+            if not isinstance(v, dict):
+                raise OutletError(f"OutletGroup item {k!r} must be an outlet mapping.")
+            outlets[str(k)] = build_outlet(v, time_index=time_index, series=series)
+        if not outlets:
+            raise OutletError("OutletGroup must contain at least one outlet definition.")
+        return OutletGroup(outlets=outlets, allocation=allocation, order=order)
+    if otype == "composite":
+        # Backwards-compatibility (deprecated): expects 'a' and 'b'.
         a = build_outlet(cfg["a"], time_index=time_index, series=series)
         b = build_outlet(cfg["b"], time_index=time_index, series=series)
         return CompositeOutlet(a=a, b=b)

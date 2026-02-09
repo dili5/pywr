@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import numpy as np
 
 from pywr.flood.curves import PiecewiseLinearCurve, StageStorageCurve
-from pywr.flood.outlets import Outlet, build_outlet
+from pywr.flood.outlets import Outlet, OutletGroup, build_outlet
 from pywr.flood.series import TimeSeries, build_timeseries
 
 
@@ -20,6 +20,7 @@ class NodeState:
     outflow: float = 0.0
     stage: float = float("nan")
     storage: float = float("nan")
+    outflow_components: dict[str, float] = field(default_factory=dict)
 
 
 class FloodNode:
@@ -208,7 +209,47 @@ class ReservoirNode(FloodNode):
 
         qout = outflow_for_v1(v1)
         stage1 = self.stage_storage.stage_from_storage(v1)
-        ns = NodeState(inflow=qin, outflow=float(qout), stage=float(stage1), storage=float(v1))
+
+        # Compute (optional) outlet components using the average stage used in routing.
+        v_avg = 0.5 * (v0 + v1)
+        stage_up_avg = self.stage_storage.stage_from_storage(v_avg)
+        comps = self.outlet.discharge_components(
+            t_index=t_index, stage_up=stage_up_avg, stage_down=tw, dt=dt
+        )
+        if comps is None:
+            comps_out: dict[str, float] = {}
+        else:
+            # Ensure no negative components.
+            comps_out = {k: max(0.0, float(v)) for k, v in comps.items()}
+            total_raw = sum(comps_out.values())
+            qout_f = float(qout)
+            if total_raw > 0.0 and qout_f < total_raw - 1e-12:
+                # The total was clamped (e.g. insufficient water). Allocate.
+                if isinstance(self.outlet, OutletGroup) and self.outlet.allocation == "priority":
+                    order = self.outlet.order or list(comps_out.keys())
+                    remaining = qout_f
+                    alloc: dict[str, float] = {k: 0.0 for k in comps_out.keys()}
+                    for k in order:
+                        if k not in comps_out:
+                            continue
+                        take = min(remaining, comps_out[k])
+                        alloc[k] = take
+                        remaining -= take
+                        if remaining <= 0.0:
+                            break
+                    comps_out = alloc
+                else:
+                    # Default proportional scaling.
+                    scale = qout_f / total_raw
+                    comps_out = {k: v * scale for k, v in comps_out.items()}
+
+        ns = NodeState(
+            inflow=qin,
+            outflow=float(qout),
+            stage=float(stage1),
+            storage=float(v1),
+            outflow_components=comps_out,
+        )
         if commit:
             self._storage = float(v1)
             self.state = ns
