@@ -305,6 +305,12 @@ def build_model(config: Dict[str, Any], excel_override: Optional[str] = None) ->
     reservoir_qmax_params: Dict[str, Any] = {}
     pending_gates: Dict[str, Dict[str, Any]] = {}
 
+    def connect_nodes(upstream: Any, downstream: Any) -> None:
+        if isinstance(downstream, Storage):
+            upstream.connect(downstream, to_slot=0)
+        else:
+            upstream.connect(downstream)
+
     # First pass: create core nodes
     for name, cfg in nodes_cfg.items():
         ntype = cfg["type"]
@@ -408,7 +414,7 @@ def build_model(config: Dict[str, Any], excel_override: Optional[str] = None) ->
                     max_flow=lat_param,
                     cost=BOUNDARY_COST,
                 )
-                lat_node.connect(node)
+                connect_nodes(lat_node, node)
                 nodes[lat_node.name] = lat_node
         elif ntype == "gate":
             node = Link(model, name=name)
@@ -601,10 +607,10 @@ def build_model(config: Dict[str, Any], excel_override: Optional[str] = None) ->
                 name=f"{upstream_node.name}_to_{downstream_node.name}_lag",
                 timesteps=lag_steps,
             )
-            upstream_node.connect(delay)
-            delay.connect(downstream_node)
+            connect_nodes(upstream_node, delay)
+            connect_nodes(delay, downstream_node)
         else:
-            upstream_node.connect(downstream_node)
+            connect_nodes(upstream_node, downstream_node)
 
     return model, nodes, flow_scale
 
