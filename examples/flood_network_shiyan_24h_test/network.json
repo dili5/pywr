@@ -71,13 +71,12 @@
           "surface_runoff": { "series": "Q_surface_runoff_res", "factor": 1.0 }
         }
       },
-      "tailwater_constant": 6.0,
       "outlet": {
         "type": "sum",
         "allocation": "priority",
         "order": ["supply", "to_xixiang"],
         "supply": { "type": "max_release", "max_Q": 5.0 },
-        "to_xixiang": { "type": "orifice", "invert_elev": 30.0, "width": 10.0, "height": 6.0, "Cd": 0.62, "n_open": 3, "opening_height": "open_spillway_gate" }
+        "to_xixiang": { "type": "orifice", "tailwater_constant": 6.0, "invert_elev": 30.0, "width": 10.0, "height": 6.0, "Cd": 0.62, "n_open": 3, "opening_height": "open_spillway_gate" }
       }
     },
 

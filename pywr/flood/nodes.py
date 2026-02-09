@@ -165,13 +165,21 @@ class GateNode(FloodNode):
 
         qcap = float(
             self.outlet.discharge(
-                t_index=t_index, stage_up=zu, stage_down=zd, dt=dt
+                t_index=t_index,
+                stage_up=zu,
+                stage_down=zd,
+                dt=dt,
+                stage_lookup=lambda nm: float(stage_guess.get(nm, float("nan"))),
             )
         )
         qout = min(qin, max(0.0, qcap))
 
         comps = self.outlet.discharge_components(
-            t_index=t_index, stage_up=zu, stage_down=zd, dt=dt
+            t_index=t_index,
+            stage_up=zu,
+            stage_down=zd,
+            dt=dt,
+            stage_lookup=lambda nm: float(stage_guess.get(nm, float("nan"))),
         )
         if comps is None:
             comps_out: dict[str, float] = {}
@@ -279,13 +287,18 @@ class ReservoirNode(FloodNode):
         v_lo = 0.0
 
         tw = self._tailwater_stage(stage_guess)
+        stage_lookup = lambda nm: float(stage_guess.get(nm, float("nan")))
 
         # Bisection on v1 with outflow evaluated at average stage.
         def outflow_for_v1(v1: float) -> float:
             v_avg = 0.5 * (v0 + v1)
             stage_up = self.stage_storage.stage_from_storage(v_avg)
             qcap = self.outlet.discharge(
-                t_index=t_index, stage_up=stage_up, stage_down=tw, dt=dt
+                t_index=t_index,
+                stage_up=stage_up,
+                stage_down=tw,
+                dt=dt,
+                stage_lookup=stage_lookup,
             )
             # Physical limit: cannot release more water than available this step.
             return min(max(0.0, float(qcap)), (v0 + qin * dt) / dt)
@@ -314,7 +327,11 @@ class ReservoirNode(FloodNode):
         v_avg = 0.5 * (v0 + v1)
         stage_up_avg = self.stage_storage.stage_from_storage(v_avg)
         comps = self.outlet.discharge_components(
-            t_index=t_index, stage_up=stage_up_avg, stage_down=tw, dt=dt
+            t_index=t_index,
+            stage_up=stage_up_avg,
+            stage_down=tw,
+            dt=dt,
+            stage_lookup=stage_lookup,
         )
         if comps is None:
             comps_out: dict[str, float] = {}

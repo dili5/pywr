@@ -15,6 +15,13 @@ class OutletError(ValueError):
     pass
 
 
+class StageLookup:
+    """Callable stage lookup by node name."""
+
+    def __call__(self, node_name: str) -> float:  # pragma: no cover
+        raise NotImplementedError
+
+
 class Outlet:
     def discharge(
         self,
@@ -23,6 +30,7 @@ class Outlet:
         stage_up: float,
         stage_down: float,
         dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         raise NotImplementedError
 
@@ -33,6 +41,7 @@ class Outlet:
         stage_up: float,
         stage_down: float,
         dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> dict[str, float] | None:
         """Optional component discharges for routing multiple outlets."""
         return None
@@ -45,7 +54,13 @@ class WeirOutlet(Outlet):
     Cw: float = 1.7  # broad-crested default-ish
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         h = stage_up - self.crest_elev
         if h <= 0.0:
@@ -74,7 +89,13 @@ class OrificeOutlet(Outlet):
         return float(self.opening_height.value_at_index(t_index))
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         if self.width <= 0.0 or self.height <= 0.0:
             raise OutletError("OrificeOutlet width/height must be > 0.")
@@ -110,7 +131,13 @@ class MaxReleaseOutlet(Outlet):
     max_Q: TimeSeries
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         return float(max(0.0, self.max_Q.value_at_index(t_index)))
 
@@ -121,14 +148,28 @@ class CompositeOutlet(Outlet):
     b: Outlet
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         return float(
             self.a.discharge(
-                t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+                t_index=t_index,
+                stage_up=stage_up,
+                stage_down=stage_down,
+                dt=dt,
+                stage_lookup=stage_lookup,
             )
             + self.b.discharge(
-                t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+                t_index=t_index,
+                stage_up=stage_up,
+                stage_down=stage_down,
+                dt=dt,
+                stage_lookup=stage_lookup,
             )
         )
 
@@ -154,21 +195,36 @@ class OutletGroup(Outlet):
         stage_up: float,
         stage_down: float,
         dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> dict[str, float]:
         return {
             name: float(
                 ot.discharge(
-                    t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+                    t_index=t_index,
+                    stage_up=stage_up,
+                    stage_down=stage_down,
+                    dt=dt,
+                    stage_lookup=stage_lookup,
                 )
             )
             for name, ot in self.outlets.items()
         }
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         comps = self.discharge_components(
-            t_index=t_index, stage_up=stage_up, stage_down=stage_down, dt=dt
+            t_index=t_index,
+            stage_up=stage_up,
+            stage_down=stage_down,
+            dt=dt,
+            stage_lookup=stage_lookup,
         )
         return float(sum(comps.values()))
 
@@ -181,10 +237,80 @@ class RatingOutlet(Outlet):
     factor: float = 1.0
 
     def discharge(
-        self, *, t_index: int, stage_up: float, stage_down: float, dt: float
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
     ) -> float:
         q = float(self.stage_discharge(float(stage_up)))
         return float(max(0.0, self.factor * q))
+
+
+@dataclass(slots=True)
+class TailwaterOutlet(Outlet):
+    """Wrap an outlet with per-component tailwater specification.
+
+    If `tailwater_ref` is set and `stage_lookup` is provided, the downstream stage is
+    taken from that node. Otherwise `tailwater_constant` is used if given, else the
+    passed `stage_down` is used.
+    """
+
+    outlet: Outlet
+    tailwater_ref: str | None = None
+    tailwater_constant: float | None = None
+
+    def _resolve_tailwater(self, stage_down: float, stage_lookup: StageLookup | None) -> float:
+        if self.tailwater_ref and stage_lookup is not None:
+            try:
+                tw = float(stage_lookup(self.tailwater_ref))
+                if math.isfinite(tw):
+                    return tw
+            except Exception:
+                pass
+        if self.tailwater_constant is not None:
+            return float(self.tailwater_constant)
+        return float(stage_down)
+
+    def discharge(
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
+    ) -> float:
+        tw = self._resolve_tailwater(stage_down, stage_lookup)
+        return float(
+            self.outlet.discharge(
+                t_index=t_index,
+                stage_up=stage_up,
+                stage_down=tw,
+                dt=dt,
+                stage_lookup=stage_lookup,
+            )
+        )
+
+    def discharge_components(
+        self,
+        *,
+        t_index: int,
+        stage_up: float,
+        stage_down: float,
+        dt: float,
+        stage_lookup: StageLookup | None = None,
+    ) -> dict[str, float] | None:
+        tw = self._resolve_tailwater(stage_down, stage_lookup)
+        return self.outlet.discharge_components(
+            t_index=t_index,
+            stage_up=stage_up,
+            stage_down=tw,
+            dt=dt,
+            stage_lookup=stage_lookup,
+        )
 
 
 def build_outlet(
@@ -197,11 +323,12 @@ def build_outlet(
 ) -> Outlet:
     otype = (cfg.get("type") or "").lower()
     if otype == "weir":
-        return WeirOutlet(
+        out: Outlet = WeirOutlet(
             crest_elev=float(cfg["crest_elev"]),
             width=float(cfg["width"]),
             Cw=float(cfg.get("Cw", 1.7)),
         )
+        return wrap_tailwater_if_needed(out, cfg)
     if otype == "orifice":
         opening = cfg.get("opening_height", None)
         if isinstance(opening, str):
@@ -218,7 +345,7 @@ def build_outlet(
         else:
             n_open_ts = None
             n_open = int(n_open_cfg)
-        return OrificeOutlet(
+        out = OrificeOutlet(
             invert_elev=float(cfg["invert_elev"]),
             width=float(cfg["width"]),
             height=float(cfg["height"]),
@@ -227,13 +354,15 @@ def build_outlet(
             n_open_series=n_open_ts,
             opening_height=opening_ts,
         )
+        return wrap_tailwater_if_needed(out, cfg)
     if otype in ("max_release", "maxrelease"):
         mx = cfg["max_Q"]
         if isinstance(mx, str):
             mx_ts = series[mx]
         else:
             mx_ts = build_timeseries(time_index, mx, name="max_Q")
-        return MaxReleaseOutlet(max_Q=mx_ts)
+        out = MaxReleaseOutlet(max_Q=mx_ts)
+        return wrap_tailwater_if_needed(out, cfg)
     if otype in ("rating", "rating_curve", "stage_discharge"):
         curve = cfg.get("stage_discharge_curve", None) or cfg.get("curve", None)
         factor = float(cfg.get("factor", 1.0))
@@ -263,7 +392,8 @@ def build_outlet(
         else:
             pairs = curve
         c = PiecewiseLinearCurve.from_pairs(pairs, clamp=True, name=f"{node_name or 'rating'}.ZQ")
-        return RatingOutlet(stage_discharge=c, factor=factor)
+        out = RatingOutlet(stage_discharge=c, factor=factor)
+        return wrap_tailwater_if_needed(out, cfg)
     if otype in ("group", "sum"):
         # Build a named group from all keys except configuration keys.
         allocation = str(cfg.get("allocation", "proportional")).lower()
@@ -272,7 +402,7 @@ def build_outlet(
             raise OutletError("OutletGroup 'order' must be a list of outlet names.")
         outlets: dict[str, Outlet] = {}
         for k, v in cfg.items():
-            if k in ("type", "allocation", "order"):
+            if k in ("type", "allocation", "order", "tailwater_ref", "tailwater_constant"):
                 continue
             if not isinstance(v, dict):
                 raise OutletError(f"OutletGroup item {k!r} must be an outlet mapping.")
@@ -285,7 +415,15 @@ def build_outlet(
             )
         if not outlets:
             raise OutletError("OutletGroup must contain at least one outlet definition.")
-        return OutletGroup(outlets=outlets, allocation=allocation, order=order)
+        out: Outlet = OutletGroup(outlets=outlets, allocation=allocation, order=order)
+        # Per-group tailwater can still be set.
+        if "tailwater_ref" in cfg or "tailwater_constant" in cfg:
+            out = TailwaterOutlet(
+                out,
+                tailwater_ref=cfg.get("tailwater_ref", None),
+                tailwater_constant=cfg.get("tailwater_constant", None),
+            )
+        return out
     if otype == "composite":
         # Backwards-compatibility (deprecated): expects 'a' and 'b'.
         a = build_outlet(
@@ -304,4 +442,14 @@ def build_outlet(
         )
         return CompositeOutlet(a=a, b=b)
     raise OutletError(f"Unknown outlet type: {cfg.get('type')!r}")
+
+
+def wrap_tailwater_if_needed(outlet: Outlet, cfg: dict) -> Outlet:
+    if "tailwater_ref" in cfg or "tailwater_constant" in cfg:
+        return TailwaterOutlet(
+            outlet,
+            tailwater_ref=cfg.get("tailwater_ref", None),
+            tailwater_constant=cfg.get("tailwater_constant", None),
+        )
+    return outlet
 
