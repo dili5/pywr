@@ -1,0 +1,126 @@
+{
+  "time": {
+    "start": "2026-02-07 00:00:00",
+    "end": "2026-02-08 00:00:00",
+    "dt_seconds": 3600,
+    "inclusive": "left"
+  },
+  "model": {
+    "max_iters": 10,
+    "tol_stage": 0.001
+  },
+  "stage_storage_excel": {
+    "path": "/home/ding/code/openFOAM/docs/Z-V-Q.xlsx",
+    "stage_col": "Z",
+    "storage_col": "V",
+    "discharge_col": "Q"
+  },
+  "series": {
+    "Q_shiyan_river_100": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+    "Q_surface_runoff_eco": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+    "Q_surface_runoff_res": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+    "open_inflow_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "open_eco_release_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "open_spillway_gate": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  },
+  "nodes": {
+    "石岩河来流": { "type": "boundary", "inflow": "Q_shiyan_river_100" },
+    "石岩河节制闸": {
+      "type": "gate",
+      "upstream_stage_curve": ["石岩河节制闸闸前Q-Z", ["Q", "Z"]],
+      "tailwater_ref": "石岩生态库",
+      "outlet": {
+        "type": "orifice",
+        "invert_elev": 33.14,
+        "width": 6.0,
+        "height": 4.0,
+        "Cd": 0.62,
+        "n_open": 4,
+        "opening_height": "open_inflow_gate"
+      }
+    },
+    "石岩生态库": {
+      "type": "reservoir",
+      "initial_stage": 32.13,
+      "stage_storage_curve": ["石岩生态库Z-V", ["Z", "V"]],
+      "inflows": {
+        "laterals": {
+          "surface_runoff": { "series": "Q_surface_runoff_eco", "factor": 1.0 }
+        }
+      },
+      "tailwater_ref": "石岩水库",
+      "outlet": {
+        "type": "sum",
+        "allocation": "priority",
+        "order": ["spillway_gate", "spillway_free"],
+        "spillway_gate": {
+          "type": "orifice",
+          "max_Q": 20.0,
+          "tailwater_ref": "茅洲河",
+          "invert_elev": 30.63,
+          "width": 3.0,
+          "height": 3.0,
+          "Cd": 0.62,
+          "n_open": 1,
+          "opening_height": "open_eco_release_gate"
+        },
+        "spillway_free": {
+          "type": "weir",
+          "crest_elev": 38.29,
+          "width": 45.0,
+          "Cw": 1.7,
+          "tailwater_ref": "石岩水库",
+          "submergence_method": "villemonte",
+          "submergence_transition_ratio": 0.67,
+          "submergence_m": 1.5,
+          "submergence_n": 0.385
+        }
+      }
+    },
+    "茅洲河": {
+      "type": "junction",
+      "rating_curve": [[0.0, 30.0], [50.0, 30.5], [200.0, 31.5], [500.0, 33.0]]
+    },
+    "石岩水库": {
+      "type": "reservoir",
+      "initial_stage": 36.72,
+      "stage_storage_curve": ["石岩水库Z-V", ["Z", "V"]],
+      "inflows": {
+        "laterals": {
+          "surface_runoff": { "series": "Q_surface_runoff_res", "factor": 1.0 }
+        }
+      },
+      "outlet": {
+        "type": "sum",
+        "allocation": "priority",
+        "order": ["supply", "to_xixiang"],
+        "supply": { "type": "max_release", "max_Q": 5.0 },
+        "to_xixiang": {
+          "type": "orifice",
+          "max_Q": 394.0,
+          "tailwater_ref": "西乡河",
+          "invert_elev": 32.04,
+          "width": 3.0,
+          "height": 3.0,
+          "Cd": 0.62,
+          "n_open": 1,
+          "opening_height": "open_spillway_gate"
+        }
+      }
+    },
+    "西乡河": {
+      "type": "junction",
+      "rating_curve": [[0.0, 31.0], [50.0, 31.5], [200.0, 32.5], [500.0, 34.0]]
+    },
+    "供水": { "type": "junction" }
+  },
+  "edges": [
+    { "from": "石岩河来流", "to": "石岩河节制闸", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩河节制闸", "to": "石岩生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩生态库", "to": "茅洲河", "from_outlet": "spillway_gate", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩生态库", "to": "石岩水库", "from_outlet": "spillway_free", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩水库", "to": "供水", "from_outlet": "supply", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩水库", "to": "西乡河", "from_outlet": "to_xixiang", "routing": { "type": "lag", "lag_seconds": 0 } }
+  ]
+}
+

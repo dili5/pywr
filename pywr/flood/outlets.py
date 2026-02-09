@@ -108,6 +108,7 @@ class OrificeOutlet(Outlet):
     n_open: int = 1
     n_open_series: TimeSeries | None = None  # time-varying number of openings
     opening_height: TimeSeries | None = None  # time-varying, metres
+    max_Q: TimeSeries | None = None  # optional capacity cap (m3/s)
 
     def _n_open(self, t_index: int) -> int:
         if self.n_open_series is None:
@@ -152,7 +153,10 @@ class OrificeOutlet(Outlet):
             return 0.0
 
         area = float(n_open) * self.width * opening
-        return float(self.Cd * area * math.sqrt(2.0 * G * head))
+        q = float(self.Cd * area * math.sqrt(2.0 * G * head))
+        if self.max_Q is not None:
+            q = min(q, float(max(0.0, self.max_Q.value_at_index(t_index))))
+        return float(q)
 
 
 @dataclass(slots=True)
@@ -380,6 +384,14 @@ def build_outlet(
         else:
             n_open_ts = None
             n_open = int(n_open_cfg)
+        max_q_cfg = cfg.get("max_Q", None)
+        if max_q_cfg is None:
+            max_q_ts = None
+        elif isinstance(max_q_cfg, str):
+            max_q_ts = series[max_q_cfg]
+        else:
+            max_q_ts = build_timeseries(time_index, max_q_cfg, name="max_Q")
+
         out = OrificeOutlet(
             invert_elev=float(cfg["invert_elev"]),
             width=float(cfg["width"]),
@@ -388,6 +400,7 @@ def build_outlet(
             n_open=n_open,
             n_open_series=n_open_ts,
             opening_height=opening_ts,
+            max_Q=max_q_ts,
         )
         return wrap_tailwater_if_needed(out, cfg)
     if otype in ("max_release", "maxrelease"):
