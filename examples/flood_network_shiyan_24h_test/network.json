@@ -28,10 +28,9 @@
   "nodes": {
     "石岩河来流": { "type": "boundary", "inflow": "Q_shiyan_river_100" },
 
-    "石岩河节制闸上游": {
-      "type": "reservoir",
-      "initial_stage": 37.0,
-      "stage_storage_curve": ["石岩河节制闸上游Z-V", ["Z", "V"]],
+    "石岩河节制闸": {
+      "type": "gate",
+      "upstream_stage_curve": ["石岩河节制闸闸前Q-Z", ["Q", "Z"]],
       "tailwater_ref": "石岩生态库",
       "outlet": {
         "type": "orifice",
@@ -78,8 +77,8 @@
     "供水": { "type": "junction" }
   },
   "edges": [
-    { "from": "石岩河来流", "to": "石岩河节制闸上游", "routing": { "type": "lag", "lag_seconds": 0 } },
-    { "from": "石岩河节制闸上游", "to": "石岩生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩河来流", "to": "石岩河节制闸", "routing": { "type": "lag", "lag_seconds": 0 } },
+    { "from": "石岩河节制闸", "to": "石岩生态库", "routing": { "type": "lag", "lag_seconds": 0 } },
 
     { "from": "石岩生态库", "to": "茅洲河", "from_outlet": "to_maozhou", "routing": { "type": "lag", "lag_seconds": 0 } },
     { "from": "石岩生态库", "to": "石岩水库", "from_outlet": "spill_to_reservoir", "routing": { "type": "lag", "lag_seconds": 0 } },

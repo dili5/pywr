@@ -114,6 +114,100 @@ class JunctionNode(FloodNode, RatingStageMixin):
         return ns
 
 
+class GateNode(FloodNode):
+    """Capacity-limited pass-through node (e.g. control gate).
+
+    This node does not store water. It computes a time-varying capacity Qmax and passes
+    Qout = min(Qin, Qmax).
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        outlet: Outlet,
+        upstream_stage_curve: PiecewiseLinearCurve | None = None,  # Qin->Z
+        upstream_stage_constant: float | None = None,
+        tailwater_ref: str | None = None,
+        tailwater_constant: float = 0.0,
+    ):
+        super().__init__(name)
+        self.outlet = outlet
+        self.upstream_stage_curve = upstream_stage_curve
+        self.upstream_stage_constant = upstream_stage_constant
+        self.tailwater_ref = tailwater_ref
+        self.tailwater_constant = float(tailwater_constant)
+
+    def _tailwater_stage(self, stage_guess: dict[str, float]) -> float:
+        if self.tailwater_ref:
+            return float(stage_guess.get(self.tailwater_ref, self.tailwater_constant))
+        return self.tailwater_constant
+
+    def _upstream_stage(self, qin: float) -> float:
+        if self.upstream_stage_curve is not None:
+            return float(self.upstream_stage_curve(float(max(0.0, qin))))
+        if self.upstream_stage_constant is not None:
+            return float(self.upstream_stage_constant)
+        return float("nan")
+
+    def step(
+        self,
+        *,
+        t_index: int,
+        dt: float,
+        inflow: float,
+        stage_guess: dict[str, float],
+        commit: bool,
+    ) -> NodeState:
+        qin = max(0.0, float(inflow))
+        zu = self._upstream_stage(qin)
+        zd = self._tailwater_stage(stage_guess)
+
+        qcap = float(
+            self.outlet.discharge(
+                t_index=t_index, stage_up=zu, stage_down=zd, dt=dt
+            )
+        )
+        qout = min(qin, max(0.0, qcap))
+
+        comps = self.outlet.discharge_components(
+            t_index=t_index, stage_up=zu, stage_down=zd, dt=dt
+        )
+        if comps is None:
+            comps_out: dict[str, float] = {}
+        else:
+            comps_out = {k: max(0.0, float(v)) for k, v in comps.items()}
+            total_raw = sum(comps_out.values())
+            if total_raw > 0.0 and qout < total_raw - 1e-12:
+                if isinstance(self.outlet, OutletGroup) and self.outlet.allocation == "priority":
+                    order = self.outlet.order or list(comps_out.keys())
+                    remaining = qout
+                    alloc: dict[str, float] = {k: 0.0 for k in comps_out.keys()}
+                    for k in order:
+                        if k not in comps_out:
+                            continue
+                        take = min(remaining, comps_out[k])
+                        alloc[k] = take
+                        remaining -= take
+                        if remaining <= 0.0:
+                            break
+                    comps_out = alloc
+                else:
+                    scale = qout / total_raw
+                    comps_out = {k: v * scale for k, v in comps_out.items()}
+
+        ns = NodeState(
+            inflow=qin,
+            outflow=float(qout),
+            stage=float(zu),
+            storage=float("nan"),
+            outflow_components=comps_out,
+        )
+        if commit:
+            self.state = ns
+        return ns
+
+
 class ReservoirNode(FloodNode):
     def __init__(
         self,
@@ -279,6 +373,66 @@ def build_node(
         else:
             inflow_ts = build_timeseries(time_index, inflow_data, name=f"{name}.inflow")
         return BoundaryInflowNode(name, inflow=inflow_ts, rating_curve=_rating())
+
+    if ntype in ("gate", "controlgate", "sluice", "capacity_gate"):
+        if stage_storage_provider is None:
+            # still allow non-excel configs
+            stage_storage_provider = None
+
+        # upstream stage estimation (Q->Z)
+        qz_spec = cfg.get("upstream_stage_curve", None) or cfg.get("upstream_stage", None)
+        qz_curve = None
+        if qz_spec is not None:
+            # Accept direct pairs or excel list: ["sheet", ["Q","Z"]] / ["sheet","Q","Z"]
+            if isinstance(qz_spec, dict) and "curve" in qz_spec:
+                qz_spec = qz_spec["curve"]
+            if isinstance(qz_spec, (list, tuple)) and len(qz_spec) > 0 and isinstance(qz_spec[0], (list, tuple)):
+                # direct pairs
+                qz_curve = PiecewiseLinearCurve.from_pairs(qz_spec, clamp=True, name=f"{name}.QZ")
+            elif isinstance(qz_spec, (list, tuple)):
+                if stage_storage_provider is None:
+                    raise NodeError(f"{name} gate upstream_stage_curve requires stage_storage_excel.")
+                if len(qz_spec) == 2 and isinstance(qz_spec[1], (list, tuple)) and len(qz_spec[1]) == 2:
+                    sheet = str(qz_spec[0])
+                    q_col, z_col = qz_spec[1]
+                elif len(qz_spec) == 3:
+                    sheet = str(qz_spec[0])
+                    q_col, z_col = qz_spec[1], qz_spec[2]
+                else:
+                    raise NodeError(
+                        f'{name} upstream_stage_curve list form must be ["sheet", ["Q","Z"]] or ["sheet","Q","Z"].'
+                    )
+                pairs = stage_storage_provider.get_xy_pairs(
+                    name,
+                    sheet_name=sheet,
+                    x_col=q_col,
+                    y_col=z_col,
+                    x_kind="Discharge",
+                    y_kind="Stage",
+                )
+                qz_curve = PiecewiseLinearCurve.from_pairs(pairs, clamp=True, name=f"{name}.QZ")
+            else:
+                raise NodeError(f"{name} upstream_stage_curve must be a pair list or excel list spec.")
+
+        outlet_cfg = cfg.get("outlet")
+        if outlet_cfg is None:
+            raise NodeError(f"{name} gate requires outlet.")
+        outlet = build_outlet(
+            outlet_cfg,
+            time_index=time_index,
+            series=series,
+            excel_provider=stage_storage_provider,
+            node_name=name,
+        )
+
+        return GateNode(
+            name,
+            outlet=outlet,
+            upstream_stage_curve=qz_curve,
+            upstream_stage_constant=cfg.get("upstream_stage_constant", None),
+            tailwater_ref=cfg.get("tailwater_ref", None),
+            tailwater_constant=float(cfg.get("tailwater_constant", 0.0)),
+        )
 
     if ntype in ("junction", "link", "node"):
         lat = cfg.get("lateral_inflow", None)

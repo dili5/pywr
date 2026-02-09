@@ -82,6 +82,42 @@ class ExcelHydroCurveProvider:
             )
         return df[col]
 
+    def get_xy_pairs(
+        self,
+        node_name: str,
+        *,
+        sheet_name: str,
+        x_col: str | int,
+        y_col: str | int,
+        x_kind: str = "X",
+        y_kind: str = "Y",
+        min_points: int = 2,
+        require_strictly_increasing_x: bool = True,
+    ) -> list[list[float]]:
+        """Load generic (x,y) pairs from a sheet and validate x monotonicity."""
+        df = self._read_sheet(sheet_name, node_name)
+        x = self._get_series(df, x_col, kind=x_kind, sheet=sheet_name, node_name=node_name)
+        y = self._get_series(df, y_col, kind=y_kind, sheet=sheet_name, node_name=node_name)
+        x = pd.to_numeric(x, errors="coerce")
+        y = pd.to_numeric(y, errors="coerce")
+        out = (
+            pd.DataFrame({"X": x, "Y": y})
+            .dropna()
+            .astype(float)
+            .sort_values("X")
+        )
+        if out.empty or len(out) < min_points:
+            raise ExcelCurveError(
+                f"Sheet {sheet_name!r} for node {node_name!r} must contain at least "
+                f"{min_points} valid ({x_kind},{y_kind}) rows."
+            )
+        out = out.drop_duplicates(subset=["X"], keep="first")
+        if require_strictly_increasing_x and not (out["X"].diff().dropna() > 0).all():
+            raise ExcelCurveError(
+                f"{x_kind} values in sheet {sheet_name!r} for node {node_name!r} must be strictly increasing."
+            )
+        return [[float(r.X), float(r.Y)] for r in out.itertuples(index=False)]
+
     def get_stage_storage_pairs(
         self,
         node_name: str,
@@ -98,30 +134,14 @@ class ExcelHydroCurveProvider:
         v_col = self.cfg.storage_col if storage_col is None else storage_col
 
         df = self._read_sheet(sheet, node_name)
-        z = self._get_series(df, st_col, kind="Stage", sheet=sheet, node_name=node_name)
-        v = self._get_series(df, v_col, kind="Storage", sheet=sheet, node_name=node_name)
-
-        z = pd.to_numeric(z, errors="coerce")
-        v = pd.to_numeric(v, errors="coerce")
-        out = (
-            pd.DataFrame({"Z": z, "V": v})
-            .dropna()
-            .astype(float)
-            .sort_values("Z")
+        pairs = self.get_xy_pairs(
+            node_name,
+            sheet_name=sheet,
+            x_col=st_col,
+            y_col=v_col,
+            x_kind="Stage",
+            y_kind="Storage",
         )
-        if out.empty or len(out) < 2:
-            raise ExcelCurveError(
-                f"Sheet {sheet!r} for node {node_name!r} must contain at least 2 valid (Z,V) rows."
-            )
-
-        # Drop duplicate stages (keep first). Stage must be strictly increasing for interpolation.
-        out = out.drop_duplicates(subset=["Z"], keep="first")
-        if not (out["Z"].diff().dropna() > 0).all():
-            raise ExcelCurveError(
-                f"Stage values in sheet {sheet!r} for node {node_name!r} must be strictly increasing."
-            )
-
-        pairs = [[float(r.Z), float(r.V)] for r in out.itertuples(index=False)]
         self._cache_zv[sheet] = pairs
         return pairs
 
@@ -140,28 +160,14 @@ class ExcelHydroCurveProvider:
         st_col = self.cfg.stage_col if stage_col is None else stage_col
         q_col = self.cfg.discharge_col if discharge_col is None else discharge_col
 
-        df = self._read_sheet(sheet, node_name)
-        z = self._get_series(df, st_col, kind="Stage", sheet=sheet, node_name=node_name)
-        q = self._get_series(df, q_col, kind="Discharge", sheet=sheet, node_name=node_name)
-
-        z = pd.to_numeric(z, errors="coerce")
-        q = pd.to_numeric(q, errors="coerce")
-        out = (
-            pd.DataFrame({"Z": z, "Q": q})
-            .dropna()
-            .astype(float)
-            .sort_values("Z")
+        pairs = self.get_xy_pairs(
+            node_name,
+            sheet_name=sheet,
+            x_col=st_col,
+            y_col=q_col,
+            x_kind="Stage",
+            y_kind="Discharge",
         )
-        if out.empty or len(out) < 2:
-            raise ExcelCurveError(
-                f"Sheet {sheet!r} for node {node_name!r} must contain at least 2 valid (Z,Q) rows."
-            )
-        out = out.drop_duplicates(subset=["Z"], keep="first")
-        if not (out["Z"].diff().dropna() > 0).all():
-            raise ExcelCurveError(
-                f"Stage values in sheet {sheet!r} for node {node_name!r} must be strictly increasing."
-            )
-        pairs = [[float(r.Z), float(r.Q)] for r in out.itertuples(index=False)]
         self._cache_zq[sheet] = pairs
         return pairs
 
