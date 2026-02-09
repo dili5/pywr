@@ -39,6 +39,43 @@ class FloodSimulationResult:
     def node(self, name: str) -> pd.DataFrame:
         return self.node_frames[name]
 
+    @staticmethod
+    def _sanitize_filename(name: str) -> str:
+        # Keep unicode, just replace path/illegal-ish characters.
+        return (
+            name.replace("/", "_")
+            .replace("\\", "_")
+            .replace(":", "_")
+            .replace("*", "_")
+            .replace("?", "_")
+            .replace("\"", "_")
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace("|", "_")
+        )
+
+    def save_csv(
+        self,
+        directory: str,
+        *,
+        nodes: list[str] | None = None,
+        decimals: int = 3,
+        encoding: str = "utf-8-sig",
+    ) -> None:
+        """Save node result tables as CSV with fixed decimals (no scientific notation)."""
+        from pathlib import Path
+
+        outdir = Path(directory)
+        outdir.mkdir(parents=True, exist_ok=True)
+        names = nodes or list(self.node_frames.keys())
+        float_format = f"%.{int(decimals)}f"
+        for n in names:
+            df = self.node_frames[n].copy()
+            # Ensure stable decimal rounding in file.
+            df = df.round(int(decimals))
+            path = outdir / f"{self._sanitize_filename(n)}.csv"
+            df.to_csv(path, float_format=float_format, encoding=encoding)
+
 
 class FloodModel:
     """Deterministic flood routing on a river network (no 1D hydrodynamics).

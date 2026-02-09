@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import pandas as pd
+
 from pywr.flood import FloodModel
 
 
@@ -19,11 +21,13 @@ def main() -> None:
     model = FloodModel.load(str(cfg_path))
     result = model.run()
 
+    pd.set_option("display.float_format", lambda x: f"{x:.3f}")
+
     # Print a few key series (outflow & stage)
     for n in ["石岩生态库", "石岩水库", "铁岗水库", "西乡河"]:
         df = result.node(n)[["outflow", "stage", "storage"]]
         print(f"\n== {n} ==")
-        print(df.head(8))
+        print(df.round(3).head(8))
 
 
 if __name__ == "__main__":
