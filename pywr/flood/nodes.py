@@ -221,6 +221,7 @@ def build_node(
     *,
     time_index,
     series: dict[str, TimeSeries],
+    stage_storage_provider=None,
 ) -> FloodNode:
     ntype = (cfg.get("type") or "").lower()
 
@@ -249,8 +250,23 @@ def build_node(
 
     if ntype in ("reservoir", "storage"):
         ssv = cfg.get("stage_storage_curve")
-        if ssv is None:
-            raise NodeError(f"{name} reservoir requires stage_storage_curve.")
+        if ssv is None or ssv == "excel":
+            if stage_storage_provider is None:
+                raise NodeError(
+                    f"{name} reservoir requires stage_storage_curve (or configure stage_storage_excel)."
+                )
+            ssv = stage_storage_provider.get_stage_storage_pairs(name)
+        elif isinstance(ssv, dict) and ("excel_sheet" in ssv or "sheet" in ssv):
+            if stage_storage_provider is None:
+                raise NodeError(
+                    f"{name} reservoir requires stage_storage_curve (or configure stage_storage_excel)."
+                )
+            sheet = ssv.get("excel_sheet", None) or ssv.get("sheet", None)
+            s_col = ssv.get("stage_col", None)
+            v_col = ssv.get("storage_col", None)
+            ssv = stage_storage_provider.get_stage_storage_pairs(
+                name, sheet_name=sheet, stage_col=s_col, storage_col=v_col
+            )
         stage_storage = StageStorageCurve.from_stage_storage_pairs(ssv, clamp=True)
 
         outlet_cfg = cfg.get("outlet")

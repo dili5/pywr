@@ -96,11 +96,29 @@ class FloodModel:
         for sname, sdata in series_cfg.items():
             series[sname] = build_timeseries(time_index, sdata, name=sname)
 
+        # Optional: load reservoir stage-storage curves from Excel.
+        stage_storage_provider = None
+        if cfg.get("stage_storage_excel") is not None:
+            from pywr.flood.excel import build_excel_stage_storage_provider, ExcelCurveError
+
+            try:
+                stage_storage_provider = build_excel_stage_storage_provider(
+                    cfg["stage_storage_excel"]
+                )
+            except ExcelCurveError as e:
+                raise FloodModelError(str(e)) from e
+
         nodes_cfg = cfg.get("nodes", {})
         if not isinstance(nodes_cfg, dict) or not nodes_cfg:
             raise FloodModelError("Config must include a non-empty 'nodes' mapping.")
         nodes = {
-            name: build_node(name, ncfg, time_index=time_index, series=series)
+            name: build_node(
+                name,
+                ncfg,
+                time_index=time_index,
+                series=series,
+                stage_storage_provider=stage_storage_provider,
+            )
             for name, ncfg in nodes_cfg.items()
         }
 
