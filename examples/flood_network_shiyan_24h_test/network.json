@@ -11,8 +11,6 @@
   },
   "stage_storage_excel": {
     "path": "D:\\9-learn\\sz_prj_tgsy\\docs\\Z-V-Q.xlsx",
-    "sheet_suffix": "Q-Z-V",
-    "sheet_joiner": "",
     "stage_col": "Z",
     "storage_col": "V",
     "discharge_col": "Q"
@@ -33,7 +31,7 @@
     "石岩河节制闸上游": {
       "type": "reservoir",
       "initial_stage": 37.0,
-      "stage_storage_curve": "excel",
+      "stage_storage_curve": ["石岩河节制闸上游Z-V", ["Z", "V"]],
       "tailwater_ref": "石岩生态库",
       "outlet": {
         "type": "orifice",
@@ -49,13 +47,13 @@
     "石岩生态库": {
       "type": "reservoir",
       "initial_stage": 37.5,
-      "stage_storage_curve": "excel",
+      "stage_storage_curve": ["石岩生态库Z-V", ["Z", "V"]],
       "lateral_inflow": "Q_surface_runoff_eco",
       "tailwater_ref": "石岩水库",
       "outlet": {
         "type": "sum",
         "to_maozhou": { "type": "max_release", "max_Q": 20.0 },
-        "spill_to_reservoir": { "type": "rating", "curve": "excel" }
+        "spill_to_reservoir": { "type": "rating", "curve": ["石岩生态库Z-Q", ["Z", "Q"]] }
       }
     },
 
@@ -64,7 +62,7 @@
     "石岩水库": {
       "type": "reservoir",
       "initial_stage": 35.0,
-      "stage_storage_curve": "excel",
+      "stage_storage_curve": ["石岩水库Z-V", ["Z", "V"]],
       "lateral_inflow": "Q_surface_runoff_res",
       "tailwater_constant": 6.0,
       "outlet": {

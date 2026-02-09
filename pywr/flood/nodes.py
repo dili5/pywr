@@ -297,6 +297,25 @@ def build_node(
                     f"{name} reservoir requires stage_storage_curve (or configure stage_storage_excel)."
                 )
             ssv = stage_storage_provider.get_stage_storage_pairs(name)
+        elif isinstance(ssv, (list, tuple)):
+            # List form: ["sheet name", ["Z", "V"]] or ["sheet name", "Z", "V"]
+            if stage_storage_provider is None:
+                raise NodeError(
+                    f"{name} reservoir requires stage_storage_curve (or configure stage_storage_excel)."
+                )
+            if len(ssv) == 2 and isinstance(ssv[1], (list, tuple)) and len(ssv[1]) == 2:
+                sheet = ssv[0]
+                s_col, v_col = ssv[1]
+            elif len(ssv) == 3:
+                sheet, s_col, v_col = ssv
+            else:
+                raise NodeError(
+                    f"{name} stage_storage_curve list form must be "
+                    f'["sheet", ["Z","V"]] or ["sheet","Z","V"].'
+                )
+            ssv = stage_storage_provider.get_stage_storage_pairs(
+                name, sheet_name=str(sheet), stage_col=s_col, storage_col=v_col
+            )
         elif isinstance(ssv, dict) and ("excel_sheet" in ssv or "sheet" in ssv):
             if stage_storage_provider is None:
                 raise NodeError(

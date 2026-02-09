@@ -239,14 +239,26 @@ def build_outlet(
         factor = float(cfg.get("factor", 1.0))
         if curve is None:
             raise OutletError("RatingOutlet requires 'stage_discharge_curve' or 'curve'.")
-        if curve == "excel":
+        if curve == "excel" or isinstance(curve, (list, tuple)):
             if excel_provider is None or node_name is None:
                 raise OutletError("RatingOutlet curve='excel' requires stage_storage_excel configuration.")
             sheet = cfg.get("excel_sheet", None) or cfg.get("sheet", None)
             z_col = cfg.get("stage_col", None)
             q_col = cfg.get("discharge_col", None)
+            if isinstance(curve, (list, tuple)):
+                # List form: ["sheet", ["Z","Q"]] or ["sheet","Z","Q"]
+                if len(curve) == 2 and isinstance(curve[1], (list, tuple)) and len(curve[1]) == 2:
+                    sheet = curve[0]
+                    z_col, q_col = curve[1]
+                elif len(curve) == 3:
+                    sheet, z_col, q_col = curve
+                else:
+                    raise OutletError(
+                        "RatingOutlet curve list form must be "
+                        '["sheet", ["Z","Q"]] or ["sheet","Z","Q"].'
+                    )
             pairs = excel_provider.get_stage_discharge_pairs(
-                node_name, sheet_name=sheet, stage_col=z_col, discharge_col=q_col
+                node_name, sheet_name=None if sheet is None else str(sheet), stage_col=z_col, discharge_col=q_col
             )
         else:
             pairs = curve
